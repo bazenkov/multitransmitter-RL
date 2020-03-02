@@ -3,6 +3,8 @@ import numpy as np
 
 def calculate(c_neurons, c_ecs, c_iterations):
 
+    print('commit from pycharm')
+
     # set start parameters
     c_time = np.array([0, 0])
     c_potentials = np.array([[n.u] * 2 for n in c_neurons])
