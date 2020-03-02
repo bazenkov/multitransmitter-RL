@@ -29,7 +29,6 @@ def save_data(s_neurons, s_iterations, file_name=None):
 
         writer.writerow(['iterations', s_iterations])
         writer.writerow(list(s_neurons[0].__dict__.keys())[:16])
-        print(list(s_neurons[0].__dict__.keys())[:16])
         for n in s_neurons:
             writer.writerow(list(n.__dict__.values())[:16])
 
@@ -49,10 +48,8 @@ def load_data(file_name):
         reader = csv.reader(csvfile, delimiter=';', quotechar='|')
         data = np.array(list(reader))
         l_iterations = int(data[0][1])
-        print(data)
         for line in data[2:]:
             values = [line[0]] + [eval(i) for i in line[1:]]
-            print(values)
             l_neurons.append(Neuron(values))
 
     l_ecs = [ECS()]
