@@ -5,7 +5,6 @@ from Neuron import get_burst_limits
 def show_plot(p_params):
     p_neurons = p_params[0]
     p_potentials = p_params[3]
-    print(p_potentials)
     plt.figure()
     names = [n.name for n in p_neurons]
     names.reverse()
