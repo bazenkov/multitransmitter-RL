@@ -12,20 +12,38 @@ import matplotlib.pyplot as plt
 
 RNG = np.random.default_rng()
 
-class CartPole:
+class EnvWrap:
+
+    def __init__(self, name):
+        self.name = name
+        self.env = gym.make(self.name)
+        self.n_inputs = np.prod(self.env.observation_space.shape)
+
+    def set_inputs(self, network, all_inputs):
+        n_neurons = network.num_neurons()
+        assert self.n_inputs == all_inputs.size // n_neurons
+        for i_n, n in enumerate(network.neurons):
+            n.w_inputs = list(all_inputs.reshape(n_neurons, self.n_inputs)[i_n,:])
+
+    def num_weights(self, network):
+        return self.n_inputs*network.num_neurons()
+
+    def get_action(self, activation):
+        raise NotImplementedError()
+
+
+class CartPole(EnvWrap):
     LEFT_NEURON = 0
     RIGHT_NERON = 1
     LEFT = 0
     RIGHT = 1
     
     def __init__(self):
-        self.name = 'CartPole-v0'
-        self.env = gym.make(self.name)
-        self.n_inputs = 4
+        EnvWrap.__init__(self, 'CartPole-v0')
     
     def get_action(self, activation):
         if activation[self.LEFT_NEURON]==1 and activation[self.RIGHT_NERON]==0:
-            return CartPole.LEFT
+            return self.LEFT
         if activation[self.LEFT_NEURON]==0 and activation[self.RIGHT_NERON]==1:
             return self.RIGHT
         return random.randrange(2)
@@ -41,6 +59,32 @@ class CartPole:
 
     def time_step(self):
         return self.env.tau
+
+class Acrobot:
+    LEFT_NEURON = 0
+    RIGHT_NERON = 1
+    LEFT = -1
+    RIGHT = 1
+    ZERO = 0
+    
+    def __init__(self):
+        self.name = 'Acrobot-v1'
+        self.env = gym.make(self.name)
+        self.n_inputs = np.prod(self.env.observation_space.shape)
+    
+    def get_action(self, activation):
+        if activation[self.LEFT_NEURON]==1 and activation[self.RIGHT_NERON]==0:
+            return self.LEFT
+        if activation[self.LEFT_NEURON]==0 and activation[self.RIGHT_NERON]==1:
+            return self.RIGHT
+        elif activation[self.LEFT]==0 and activation[self.RIGHT]==0:
+            return self.ZERO
+        return self.env.action_space.sample()
+    def num_weights(self, network):
+        return self.n_inputs*network.num_neurons()
+
+    def time_step(self):
+        return self.env.dt
 
 SCALE = 50
 ALPHA = 0.01
