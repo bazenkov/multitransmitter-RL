@@ -3,9 +3,12 @@ from Neuron import get_burst_limits
 
 
 def show_plot(p_params):
+    """
+    p_params = [c_neurons, c_ecs, c_time, c_potentials, c_activations, u_rates, tact_dur, rhythm]
+    """
     p_neurons = p_params[0]
     p_potentials = p_params[3]
-    plt.figure()
+    fig = plt.figure()
     names = [n.name for n in p_neurons]
     names.reverse()
     ax_set = []
@@ -26,8 +29,8 @@ def show_plot(p_params):
         ax_set[-1].set_xticks([])
         ax_set[-1].set_yticks([p_neurons[pic].u_th])
         ax_set[-1].set_xticklabels([])
-        ax_set[-1].set_yticks([p_neurons[pic].u_min - 0.01, p_neurons[pic].u_max + 0.01])
-        ax_set[-1].set_yticks([p_neurons[pic].u_th], minor=True)
+        ax_set[-1].set_yticks([p_neurons[pic].u_min - 0.01, p_neurons[pic].u_th, p_neurons[pic].u_max + 0.01])
+        #ax_set[-1].set_yticks([p_neurons[pic].u_th], minor=True)
         ax_set[-1].tick_params(axis='y', which='minor', labelsize=14, labelbottom=1)
 
         ax_set[-1].set_yticklabels([])
@@ -36,7 +39,7 @@ def show_plot(p_params):
             ax_set[-1].xaxis.set_label_coords(1.01, -0.025)
         elif pic == 0:
             ax_set[-1].xaxis.set_label_coords(-0.03, 1.3)
-
+    return fig
 
 def population_plot(p_params):
     p_neurons = p_params[0]

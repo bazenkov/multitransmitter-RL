@@ -31,13 +31,21 @@ def get_burst_limits(activation_sequence, time):
 
 
 class Neuron:
-
-    def __init__(self, values):
-
-        keys = (
-            'name', 'u_th', 'u_max', 'u_0', 'u_min', 'u_reb', 'v_00', 'v_01', 'v_10', 'v_11', 'v_reb', 'u', 'd', 'w')
-        self.__dict__.update(zip(keys, values))
-
+    def __init__(self, name, u_th, u_max, u_0, u_min, u_reb, v_00, v_01, v_10, v_11, v_reb, u, d, w):
+        self.name = name
+        self.u_th = u_th
+        self.u_max = u_max
+        self.u_0 = u_0
+        self.u_min = u_min
+        self.u_reb = u_reb
+        self.v_00 = v_00
+        self.v_01 = v_01
+        self.v_10 = v_10
+        self.v_11 = v_11
+        self.v_reb = v_reb
+        self.u = u
+        self.d = d
+        self.w = w
         self.u_rate_end = 0
 
     def u_rate(self, ecs, time, potentials):
@@ -134,5 +142,5 @@ class Neuron:
 
     def update_activation(self):
 
-        return int(self.u > self.u_th or self.u == self.u_th and self.u_rate > 0)
+        return int(self.u > self.u_th or (self.u == self.u_th and self.u_rate > 0))
 

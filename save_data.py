@@ -49,8 +49,9 @@ def load_data(file_name):
         data = np.array(list(reader))
         l_iterations = int(data[0][1])
         for line in data[2:]:
+            #['name', 'u_th', 'u_max', 'u_0', 'u_min', 'u_reb', 'v_00', 'v_01', 'v_10', 'v_11', 'v_reb', 'u', 'd', 'w']
             values = [line[0]] + [eval(i) for i in line[1:]]
-            l_neurons.append(Neuron(values))
+            l_neurons.append(Neuron(*values))
 
     l_ecs = [ECS()]
 
