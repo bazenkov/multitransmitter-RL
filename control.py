@@ -104,7 +104,7 @@ def train(env_w, network, n_iter, pop_size, n_episode, episode_duration, sigma, 
         return control(params[0], params[1], params[2], params[3])
     w, pop, R_history, best_history = nes(fun,  np.random.randn(env_w.num_weights(network)), n_iter, pop_size, sigma, alpha, gamma,
              [env_w, network, n_episode, episode_duration])
-    return w, pop, R_history
+    return w, pop, R_history, best_history
 
 
 def random_search(env_w, network, n_sample, sigma = 1, n_episode = 2, episode_duration=100):
