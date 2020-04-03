@@ -10,6 +10,11 @@ from algorithms import nes
 import matplotlib.pyplot as plt
 
 
+"""Command-line options
+python contro.py {show, train, test} network_filename 
+
+"""
+
 RNG = np.random.default_rng()
 
 class EnvWrap:
@@ -60,7 +65,7 @@ class CartPole(EnvWrap):
     def time_step(self):
         return self.env.tau
 
-class Acrobot:
+class Acrobot(EnvWrap):
     LEFT_NEURON = 0
     RIGHT_NERON = 1
     LEFT = -1
@@ -68,9 +73,7 @@ class Acrobot:
     ZERO = 0
     
     def __init__(self):
-        self.name = 'Acrobot-v1'
-        self.env = gym.make(self.name)
-        self.n_inputs = np.prod(self.env.observation_space.shape)
+        EnvWrap.__init__(self, 'Acrobot-v1')
     
     def get_action(self, activation):
         if activation[self.LEFT_NEURON]==1 and activation[self.RIGHT_NERON]==0:
@@ -80,11 +83,16 @@ class Acrobot:
         elif activation[self.LEFT]==0 and activation[self.RIGHT]==0:
             return self.ZERO
         return self.env.action_space.sample()
-    def num_weights(self, network):
-        return self.n_inputs*network.num_neurons()
 
     def time_step(self):
         return self.env.dt
+
+def create_env(name):
+    if name == "Acrobot":
+        return Acrobot()
+    elif name == "Cartpole":
+        return CartPole()
+    raise NotImplementedError()
 
 SCALE = 50
 ALPHA = 0.01
@@ -94,7 +102,7 @@ def train(env_w, network, n_iter, pop_size, n_episode, episode_duration, sigma, 
         env_w.set_inputs(params[1], w)
         #params = [env, network, n_episode, episode_duration]
         return control(params[0], params[1], params[2], params[3])
-    w, pop, R_history = nes(fun,  np.random.randn(env_w.num_weights(network)), n_iter, pop_size, sigma, alpha, gamma,
+    w, pop, R_history, best_history = nes(fun,  np.random.randn(env_w.num_weights(network)), n_iter, pop_size, sigma, alpha, gamma,
              [env_w, network, n_episode, episode_duration])
     return w, pop, R_history
 
@@ -125,9 +133,7 @@ def control(env_w, network, n_episode=1, episode_duration=100, show = False, rec
                     recorder.capture_frame()
                 else:
                     env_w.env.render()
-            n_t = 5
-            for _ in range(n_t):
-                activation = network.step(inputs, step_duration =  env_w.time_step()/n_t)
+            activation = network.step(inputs, step_duration =  env_w.time_step())
             inputs, reward, done, _ =  env_w.env.step( env_w.get_action(activation))
             cum_reward += reward
             if done:
@@ -138,14 +144,15 @@ def control(env_w, network, n_episode=1, episode_duration=100, show = False, rec
 
 def test_random_search(file):
     network, _ = net.load_network(file)
-    env_w = CartPole()
+    #env_w = CartPole()
+    env_w = Acrobot()
     print(f"Starting {env_w.name} environment")
     #print(env.action_space)
     #print(env.observation_space)
     n_sample = 50
     network, _, _ = random_search(env_w, network, n_sample, sigma = 50, n_episode = 2, episode_duration=300)
     print("Show the best policy")
-    control(env_w, network, n_episode = 1, episode_duration = 5000, show = True)
+    control(env_w, network, n_episode = 1, episode_duration = 200, show = True)
     env_w.env.close()
     network.plot()
     plt.show()
@@ -156,14 +163,15 @@ def test_random_search(file):
 def test_nes(file):
     network, n_iter = net.load_network(file)
     #start control cycle
-    env_w = CartPole()
+    #env_w = CartPole()
+    env_w = Acrobot()
     print(f"Starting {env_w.name} environment")
     print(env_w.env.action_space)
     print(env_w.env.observation_space)
     n_population = 50
-    n_iter = 30
-    best_w, pop, R_history = train(env_w, network, n_iter, n_population, 
-        n_episode = 2, episode_duration = 150, sigma = 50, alpha = 10, gamma = 0.00)
+    n_iter = 40
+    best_w, pop, R_history, best_history = train(env_w, network, n_iter, n_population, 
+        n_episode = 2, episode_duration = 300, sigma = 50, alpha = 20, gamma = 0.5)
     print("Show the best policy")
     env_w.set_inputs(network, best_w)
     #control(env, network, n_episode = 1, episode_duration = 100, show = True)
@@ -178,7 +186,8 @@ def test_nes(file):
 def show_network(file, record = False, video_path = None):
     network, n_iter = net.load_network(file)
     #start control cycle
-    env_w = CartPole()
+    #env_w = CartPole()
+    env_w = Acrobot()
     print(f"Starting {env_w.name} environment")
     print(env_w.env.action_space)
     print(env_w.env.observation_space)

@@ -13,6 +13,7 @@ def nes(fun, w_0, n_iter, pop_size = 50, sigma = 1, alpha = 0.01, gamma = 0, par
     R = np.zeros(pop_size)
     w = w_0
     pop = np.zeros((pop_size, len(w_0)))
+    best_history = []
     for i in range(n_iter):
         #noise = RNG.normal(scale = sigma, size=(pop_size, len(w)))
         noise = np.random.randn(pop_size, len(w))
@@ -24,7 +25,9 @@ def nes(fun, w_0, n_iter, pop_size = 50, sigma = 1, alpha = 0.01, gamma = 0, par
         A = R
         w = w + alpha/(pop_size*sigma) * np.dot(noise.T, A)
         R_history[i] = f(w)
-    return w, pop, R_history
+        best_ind = np.argmax(R)
+        best_history.append(pop[best_ind])
+    return w, pop, R_history, best_history
 
 if __name__ == "__main__":
     solution = np.array([0.5, 0.1, -0.3])
