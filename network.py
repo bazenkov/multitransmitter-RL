@@ -10,6 +10,12 @@ from save_data import save_data
 
 TIME_EPS_FRAC = 1e-3
 
+def strict_slicing(seq, i_start, i_end):
+    if i_start >= len(seq):
+        raise ValueError("Index out of bounds")
+    else:
+        return seq[i_start:i_end]
+        
 class InputNeuron(nrn.Neuron):
 
     fields = ["name" , "u_th", "u_max", "u_0", "u_min", "u_reb", "v_00", "v_01", "v_10", "v_11", "v_reb", "u", "d", "w", "w_inputs"]
@@ -74,6 +80,18 @@ class InputNeuron(nrn.Neuron):
     def to_list(self):
         return [self.__dict__[k] for k in self.fields]
 
+    def from_list(self, attr_values, attr_names):
+        i_attr = 0
+        for attr in attr_names:
+            if np.isscalar(self.__dict__[attr]):
+                len_attr = 1
+                self.__dict__[attr] = attr_values[i_attr]
+            else:
+                len_attr = len(self.__dict__[attr])
+                self.__dict__[attr] = list(strict_slicing(attr_values, i_attr, i_attr + len_attr) )
+            i_attr += len_attr
+            
+
 class Network:
 
     @staticmethod
@@ -99,7 +117,7 @@ class Network:
         """Calculate the dynamics for the specified duration with the fixed external inputs
         neurons - list of InputNeuron objects
         ecs - list of ECS
-        inputs - numpy array os the same shape as w_inputs array of each neuron
+        inputs - numpy array of the same shape as w_inputs array of each neuron
         step_duration - duration in model units, corresponding to threshold and rates of the neurons
         potentials - history of previous neuron potentials as [[u_0, u_1, u_2, u_3, ...], [...], ... ]
         Returns neurons, ecs, time, potentials, activations, u_rates
@@ -125,6 +143,7 @@ class Network:
             total_duration += self.tact_dur[-1]
         return new_activations
 
+    
     def to_list(self):
         pass
 
@@ -193,12 +212,16 @@ if __name__ == "__main__":
     net, n_iter = load_network(file)
     #inputs = np.array([1, 0, 3.5, -2])
     inputs = np.zeros(4)
+    net.neurons[0].from_list([0.75, 2, -2], attr_names=['u_th', 'w'])
+    print(net.neurons[0].u_th)
+    print(net.neurons[0].w)
     step_duration = 0.02
     for i in range(n_iter):
         net.step(inputs, step_duration)
     net.plot()
     plt.show()
-    save_network(net, "trained/test_save.csv")
+
+    #save_network(net, "trained/test_save.csv")
     #print(net.potentials)
     #print(net.activations)
     #print(net.time)
