@@ -37,6 +37,8 @@ def call_f(fun, x, params = None):
         return fun(x)
 
 def simple_ga(fun, w_0, n_iter, pop_size = 50, elite_frac = 0.1, sigma = 1, params = None):
+    """Simple genetic Algorithm from the paper
+    """
     def crossover(parents):
         cross_ind = parents.shape[1] // 2
         return np.concatenate((parents[0,:cross_ind], parents[1,cross_ind:]))
@@ -64,6 +66,8 @@ def simple_ga(fun, w_0, n_iter, pop_size = 50, elite_frac = 0.1, sigma = 1, para
         R_history[i_gen] = call_f(fun, w, params)
         #best_history.append(best)
         best_history[i_gen,:] = w
+    top = np.argmax(R_history)
+    best = best_history[top]
     return best, pop, R_history, best_history
 
         

@@ -6,9 +6,9 @@ class ECS:
     def __init__(self):
         self.name = 'ECS '
 
-    def calc_con(self, neurons, activations):
-
+    def calc_con(self, neurons, activations, injection = None):
         self.cons = np.array([0] * len(neurons[0].d))
-
         for i, n in enumerate(neurons):
             self.cons = np.add(self.cons, np.array(n.d) * activations[:, -1][i])
+        if not (injection is None):
+            self.cons = np.add(self.cons, injection)

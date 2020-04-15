@@ -4,11 +4,13 @@ from datetime import datetime
 import gym
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 import numpy as np
+import json
 import random
 import network as net
 from algorithms import nes
 from algorithms import simple_ga
 import matplotlib.pyplot as plt
+from collections import namedtuple
 
 
 """Command-line options
@@ -18,9 +20,10 @@ python contro.py {show, train, test} network_filename
 
 RNG = np.random.default_rng()
 
-
+Bound = namedtuple('Bound', ('low', 'up'))
 
 class EnvWrap:
+    bounds = None
 
     def __init__(self, name):
         self.name = name
@@ -33,14 +36,41 @@ class EnvWrap:
     def get_action(self, activation):
         raise NotImplementedError()
 
+    def norm(self, observation):
+        raise NotImplementedError()
+    #    norm_obs = np.zeros(observation.size)
+    #    if self.bounds:
+    #        for i, val in enumerate(observation):
+    #            norm_obs[i] = (val - self.bounds[i].low)/(self.bounds[i].up - self.bounds[i].low)
+    #        return norm_obs
+    #    else:
+    #        return observation
+
+
 class CartPole(EnvWrap):
+    """
+    Observation: 
+        Type: Box(4)
+        Num	Observation                 Min         Max
+        0	Cart Position             -4.8            4.8
+        1	Cart Velocity             -Inf            Inf
+        2	Pole Angle                 -24 deg        24 deg
+        3	Pole Velocity At Tip      -Inf            Inf
+        
+    Actions:
+        Type: Discrete(2)
+        Num	Action
+        0	Push cart to the left
+        1	Push cart to the right
+    """
     LEFT_NEURON = 0
     RIGHT_NERON = 1
     LEFT = 0
     RIGHT = 1
-    
+        
     def __init__(self):
         EnvWrap.__init__(self, 'CartPole-v1')
+        self.bounds = [Bound(-4.8, 4.8), Bound(-10, 10), Bound(-24, 24), Bound(-10, 10)]
     
     def get_action(self, activation):
         if activation[self.LEFT_NEURON]==1 and activation[self.RIGHT_NERON]==0:
@@ -60,6 +90,13 @@ class CartPole(EnvWrap):
 
     def time_step(self):
         return self.env.tau
+
+    def step(self, activation):
+        inputs, reward, done, x = self.env.step(self.get_action(activation))
+        #if np.all(activation):
+        #    reward = reward - 0.5
+        return inputs, reward, done, x
+    
 
 class Acrobot(EnvWrap):
     LEFT_NEURON = 0
@@ -108,6 +145,13 @@ def fun(w, params):
     #params = [env, network, attr_names, n_episode, episode_duration]
     return control(params[0], params[1], params[3], params[4])
 
+def fun_reg(w, params):
+    set_inputs(params[1], w, params[2])
+    #params = [env, network, attr_names, n_episode, episode_duration, gamma]
+    R = control(params[0], params[1], params[3], params[4])
+    return R - params[5]*np.sum(np.abs(w))
+
+
 def train(env_w, network, attr_names, n_iter, pop_size, n_episode, episode_duration, sigma, alpha, gamma = 0):
     w, pop, R_history, best_history = nes(fun,  np.random.randn(env_w.num_weights(network)), n_iter, pop_size, sigma, alpha, gamma,
              [env_w, network, attr_names, n_episode, episode_duration])
@@ -151,7 +195,8 @@ def control(env_w, network, n_episode=1, episode_duration=100, show = False, rec
                 else:
                     env_w.env.render()
             activation = network.step(inputs, step_duration =  env_w.time_step())
-            inputs, reward, done, _ =  env_w.env.step( env_w.get_action(activation))
+            #inputs, reward, done, _ =  env_w.env.step( env_w.get_action(activation))
+            inputs, reward, done, _ =  env_w.step( activation)
             cum_reward += reward
             if done:
                 break
@@ -201,7 +246,7 @@ def test_nes(file, attr_names):
     net.save_network(network, file_name)
 
 def train_ga(file, attr_names):
-    network, n_iter = net.load_network(file)
+    network, _ = net.load_network(file)
     param_size = attr_size(network.neurons[0], attr_names)*network.num_neurons()
     #start control cycle
     env_w = CartPole()
@@ -209,22 +254,26 @@ def train_ga(file, attr_names):
     print(f"Starting {env_w.name} environment")
     print(env_w.env.action_space)
     print(env_w.env.observation_space)
-    n_population = 50
-    n_iter = 10
-    elite_frac = 0.1
+    
     w_0 = np.random.randn(param_size)
     n_episode = 1
-    episode_duration = 300
-    best_w, pop, R_history, best_history = simple_ga(fun, w_0, 
-            n_iter = 10, pop_size = 50, elite_frac = 0.1, sigma = 50,
-            params = [env_w, network, attr_names, n_episode, episode_duration])
+    episode_duration = 100
+    gamma = 0.00
+    best_w, pop, R_history, best_history = simple_ga(fun_reg, w_0, 
+            n_iter = 50, pop_size = 50, elite_frac = 0.1, sigma = 50,
+            params = [env_w, network, attr_names, n_episode, episode_duration, gamma])
     print("Show the best policy")
     set_inputs(network, best_w, attr_names)
     env_w.env.close()
-    plt.plot(R_history)
+    
     folder = "trained/" + env_w.name
     file_name = folder + "/" + f"ga_" + datetime.strftime(datetime.now(), "%H.%M.%S - %Y.%m.%d") + ".csv"
     net.save_network(network, file_name)
+    file_json = folder + "/" + f"ga_" + datetime.strftime(datetime.now(), "%H.%M.%S - %Y.%m.%d") + ".json"
+    json_results = {'network':network, 'best_history':best_history, 'R_history':R_history}
+    json.dump(json_results, open(file_json, 'w'))
+    plt.plot(R_history)
+    plt.show()
     return file_name
 
 def show_network(file, record = False, video_path = None):
@@ -238,7 +287,7 @@ def show_network(file, record = False, video_path = None):
     #R = control(env, network, n_episode = 1, episode_duration = 200, show = False)
     if record:
         vr = VideoRecorder(env_w.env, base_path = video_path)
-        R = control(env_w, network, n_episode = 1, episode_duration = 500, show = True, recorder = vr)
+        R = control(env_w, network, n_episode = 1, episode_duration = 200, show = True, recorder = vr)
         vr.close()
     else:
         R = control(env_w, network, n_episode = 1, episode_duration = 500, show = True)

@@ -113,7 +113,7 @@ class Network:
         self.u_rates = np.array([[n.u_rate([self.ecs], self.time, self.potentials[i], inputs = np.array([]))] * 2 for i, n in enumerate(self.neurons)])
         self.tact_dur = np.array([0])
 
-    def step(self, inputs, step_duration):
+    def step_old(self, inputs, step_duration):
         """Calculate the dynamics for the specified duration with the fixed external inputs
         neurons - list of InputNeuron objects
         ecs - list of ECS
@@ -143,6 +143,35 @@ class Network:
             total_duration += self.tact_dur[-1]
         return new_activations
 
+    def step(self, inputs, step_duration, injection = None):
+        """Calculate the dynamics for the specified duration with the fixed external inputs
+        neurons - list of InputNeuron objects
+        ecs - list of ECS
+        inputs - numpy array of the same shape as w_inputs array of each neuron
+        step_duration - duration in model units, corresponding to threshold and rates of the neurons
+        potentials - history of previous neuron potentials as [[u_0, u_1, u_2, u_3, ...], [...], ... ]
+        Returns neurons, ecs, time, potentials, activations, u_rates
+        """
+        total_duration = 0.0
+        while total_duration < step_duration*(1 - TIME_EPS_FRAC):
+            self.ecs.calc_con(self.neurons, self.activations, injection)
+            # calculate MP changing rates due to ecs transmitter concentrations
+            new_u_rates = np.array([[n.u_rate([self.ecs], self.time, self.potentials[i], inputs)] 
+                                for i, n in enumerate(self.neurons)])
+            self.u_rates = np.concatenate((self.u_rates, new_u_rates), axis=1)
+            # calculate tact duration
+            self.tact_dur = np.append(self.tact_dur, 
+                    min([n.residual_time(new_u_rates[i]) for i, n in enumerate(self.neurons)] + [step_duration-total_duration]))
+            self.time = np.append(self.time, self.time[-1] + self.tact_dur[-1])
+            #next potentials
+            new_potentials = np.array(
+                [[n.update_potential(self.time, new_u_rates[i][0], self.potentials[i][-1])] for i, n in
+                    enumerate(self.neurons)]).reshape((len(self.neurons), 1))
+            new_activations = np.array([[int(n.u >= n.u_th)] for n in self.neurons])
+            self.potentials = np.concatenate((self.potentials, new_potentials), axis=1)
+            self.activations = np.concatenate((self.activations, new_activations), axis=1)
+            total_duration += self.tact_dur[-1]
+        return new_activations
     
     def to_list(self):
         pass
@@ -213,11 +242,12 @@ if __name__ == "__main__":
     #inputs = np.array([1, 0, 3.5, -2])
     inputs = np.zeros(4)
     net.neurons[0].from_list([0.75, 2, -2], attr_names=['u_th', 'w'])
+    injection = np.array([0, 0])
     print(net.neurons[0].u_th)
     print(net.neurons[0].w)
     step_duration = 0.02
     for i in range(n_iter):
-        net.step(inputs, step_duration)
+        net.step(inputs, step_duration, injection)
     net.plot()
     plt.show()
 
