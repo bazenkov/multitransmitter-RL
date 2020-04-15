@@ -14,8 +14,11 @@ from collections import namedtuple
 
 
 """Command-line options
-python contro.py {show, train, test} network_filename 
+python contro.py [show|train|test] [network_filename|config_filename]
 
+python control.py show network_file_name
+python control.py train config_filename
+python control.py test
 """
 
 RNG = np.random.default_rng()
@@ -222,18 +225,34 @@ def test_random_search(file, attr_names):
     file_name = folder + "/" + f"random_{n_sample}_" + datetime.strftime(datetime.now(), "%H.%M.%S - %Y.%m.%d") + ".csv"
     net.save_network(network, file_name)
 
-def test_nes(file, attr_names):
+def init_env(env_name):
+    if env_name == 'CartPole-v1':
+        return CartPole()
+    elif env_name == 'Acrobot-v1':
+        return Acrobot()
+    else:
+        raise NotImplementedError("Unknown environment name")
+
+def init_inputs(network, env_w):
+    for n in network.neurons:
+        n.w_inputs = np.zeros(env_w.n_inputs)
+    return network
+
+def test_nes(env_name, file, attr_names, alg_params):
     network, n_iter = net.load_network(file)
     #start control cycle
-    env_w = CartPole()
-    #env_w = Acrobot()
+    env_w = init_env(env_name)
+    network = init_inputs(network, env_w)
     print(f"Starting {env_w.name} environment")
     print(env_w.env.action_space)
     print(env_w.env.observation_space)
-    n_population = 50
-    n_iter = 40
-    best_w, pop, R_history, best_history = train(env_w, network, attr_names,  n_iter, n_population, 
-        n_episode = 3, episode_duration = 300, sigma = 50, alpha = 10, gamma = 0.0)
+    best_w, pop, R_history, best_history = train(env_w, network, attr_names,  
+        n_iter = alg_params['n_iter'], 
+        pop_size = alg_params['pop_size'], 
+        n_episode = alg_params['n_episode'], 
+        episode_duration = alg_params['episode_duration'], 
+        sigma = alg_params['sigma'], 
+        alpha = alg_params['alpha'])
     print("Show the best policy")
     env_w.set_inputs(network, best_w)
     #control(env, network, n_episode = 1, episode_duration = 100, show = True)
@@ -241,7 +260,7 @@ def test_nes(file, attr_names):
     env_w.env.close()
     plt.plot(R_history)
     plt.show()
-    folder = "trained"
+    folder = f"trained/{env_w.name}"
     file_name = folder + "/" + f"nes_" + datetime.strftime(datetime.now(), "%H.%M.%S - %Y.%m.%d") + ".csv"
     net.save_network(network, file_name)
 
@@ -310,21 +329,20 @@ def test_video():
     assert os.fstat(f.fileno()).st_size > 100
 
 if __name__ == "__main__":
-    #create environment
-    attr_names = ['w_inputs']
     option = sys.argv[1]
     if len(sys.argv)>2:
-        file = sys.argv[2]#"saved_params/ton_inp.csv"
-    if option == 'nes' or option == 'rand' or option == 'ga':
-        if len(sys.argv) > 3:
-            attr_names = eval(sys.argv[3])
-    if option == 'nes':
-        test_nes(file, attr_names)
-    elif option == 'rand':
-        test_random_search(file, attr_names)
-    elif option == 'ga':
-        file_name = train_ga(file, attr_names)
-        show_network(file_name)
+        file = sys.argv[2]#"saved_params/ton_inp.csv" or "conf/nes_cartpole.json"
+    if option == 'train':
+        json_params = json.load(open(file))
+        network_file = json_params['network']
+        attr_names = json_params['attr_names']
+        if json_params['algorithm'] == 'nes':
+            test_nes(json_params['env'], network_file, attr_names, json_params['params'])    
+        elif json_params['algorithm'] == 'rand':
+            test_random_search(network_file, attr_names)
+        elif json_params['algorithm'] == 'ga':
+            file_name = train_ga(network_file, attr_names)
+            show_network(file_name)
     elif option == 'show':
         if len(sys.argv) > 3:
             video_file = sys.argv[3]            
