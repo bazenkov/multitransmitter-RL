@@ -144,12 +144,12 @@ SCALE = 50
 ALPHA = 0.01
 
 def fun(w, params):
-    set_attr_values(params[1], w, params[2])
+    params[1].set_attr_values(w, params[2])
     #params = [env, network, attr_names, n_episode, episode_duration]
     return control(params[0], params[1], params[3], params[4])
 
 def fun_reg(w, params):
-    set_attr_values(params[1], w, params[2])
+    params[1].set_attr_values( w, params[2])
     #params = [env, network, attr_names, n_episode, episode_duration, gamma]
     R = control(params[0], params[1], params[3], params[4])
     return R - params[5]*np.sum(np.abs(w))
@@ -160,45 +160,27 @@ def fun_reg(w, params):
 #             [env_w, network, attr_names, n_episode, episode_duration])
 #    return w, pop, R_history, best_history
 
-def attr_size(neuron, attr_names):
-    '''attr_names is a list like:
-    [ {"d": [0], "w_inputs":[0,2], "v_01":true }, {"d": [1], "w_inputs":[1,2,3]}],
-    '''
-    s = 0
-    for name in attr_names:
-        if np.isscalar(neuron.__dict__[name]):
-            s += 1
-        else:
-            s += len(attr_names[name])
-    return s
+
 
 def init_inputs(network, env_w):
     for n in network.neurons:
         n.w_inputs = np.zeros(env_w.n_inputs)
     return network
 
-def set_attr_values(network, vector_attr, attr_names):
-    n_neurons = network.num_neurons()
-    assert vector_attr.size == vector_attr.shape[0]
-    assert vector_attr.size % n_neurons == 0
-    matr_attr = vector_attr.reshape(n_neurons, vector_attr.size // n_neurons)
-    for i_n, n in enumerate(network.neurons):
-        n.from_list(list(matr_attr[i_n,:]), attr_names)
-
 def random_search(env_w, network, attr_names, n_sample, sigma = 1, n_episode = 2, episode_duration=100):
-    param_size = attr_size(network.neurons[0], attr_names)*network.num_neurons()
+    param_size = network.total_attr_size(attr_names)
     reward = np.zeros(n_sample)
     policies = []
     for i_p in range(n_sample):
         w = RNG.normal(scale = sigma, size=param_size)
-        set_attr_values(network, w, attr_names)
+        network.set_attr_values(w, attr_names)
         policies.append(w)
         reward[i_p] = control(env_w, network, n_episode, episode_duration)
     print("Best policy is:")
     best_ind = np.argmax(reward)
     print(policies[best_ind])
     print("Best reward is: " + str(reward[best_ind]))
-    set_attr_values(network, policies[best_ind], attr_names) 
+    network.set_attr_values(policies[best_ind], attr_names) 
     return network, policies, reward
 
 def control(env_w, network, n_episode=1, episode_duration=100, show = False, recorder = None):
@@ -246,7 +228,7 @@ def train_nes(env_name, file, attr_names, alg_params, show_history = False):
     network = init_inputs(network, env_w)
     print(f"Starting {env_w.name} environment")
     #print(network.neurons[1].__dict__.keys())
-    w_0 = np.random.randn(network.num_neurons()*attr_size(network.neurons[0], attr_names))
+    w_0 = np.random.randn(network.total_attr_size(attr_names))
     print("Starting NES optimization with parameters:")
     for n in alg_params.keys():
         print(f"{n}={alg_params[n]}")
@@ -257,7 +239,7 @@ def train_nes(env_name, file, attr_names, alg_params, show_history = False):
             sigma = alg_params['sigma'], 
             alpha = alg_params['alpha'], 
             params =  fun_params)
-    set_attr_values(network, best_w, attr_names)
+    network.set_attr_values(best_w, attr_names)
     env_w.env.close()
     print("Optimization finished")
     if show_history:
@@ -268,7 +250,7 @@ def train_nes(env_name, file, attr_names, alg_params, show_history = False):
 
 def train_ga(file, attr_names):
     network, _ = net.load_network(file)
-    param_size = attr_size(network.neurons[0], attr_names)*network.num_neurons()
+    param_size = network.total_attr_size(attr_names)
     #start control cycle
     env_w = CartPole()
     #env_w = Acrobot()
@@ -284,7 +266,7 @@ def train_ga(file, attr_names):
             n_iter = 50, pop_size = 50, elite_frac = 0.1, sigma = 50,
             params = [env_w, network, attr_names, n_episode, episode_duration, gamma])
     print("Show the best policy")
-    set_attr_values(network, best_w, attr_names)
+    network.set_attr_values(best_w, attr_names)
     env_w.env.close()
     
     folder = "trained/" + env_w.name

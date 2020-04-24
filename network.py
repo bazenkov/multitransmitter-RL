@@ -109,24 +109,32 @@ class InputNeuron(nrn.Neuron):
                 self.__dict__[attr] = list(strict_slicing(attr_values, i_attr, i_attr + len_attr) )
             i_attr += len_attr
 
-    def from_list(self, attr_values, attr_names):
-        '''attr_names = ["w_inputs":[0, 2], "v_01":True]
+    def from_list(self, attr_values, d_attr_names):
+        '''d_attr_names = {"w_inputs":[0, 2], "v_01":True}
         attr_values = [0.5, -1, 2.35]
         '''
         i_attr = 0
-        for attr in attr_names:
+        for attr in d_attr_names:
             if np.isscalar(self.__dict__[attr]):
                 len_attr = 1
                 self.__dict__[attr] = attr_values[i_attr]
             else:
-                len_attr = len(attr_names[attr])
-                for i, ind in enumerate(attr_names[attr]):
+                len_attr = len(d_attr_names[attr])
+                for i, ind in enumerate(d_attr_names[attr]):
                     self.__dict__[attr][ind] = attr_values[ i_attr + i]
             i_attr += len_attr
 
-
-
-
+    def attr_size(self, d_attr_names):
+        '''attr_names is a dict like:
+        {"d": [0], "w_inputs":[0,2], "v_01":true }
+        '''
+        s = 0
+        for name in d_attr_names.keys():
+            if np.isscalar(self.__dict__[name]):
+                s += 1
+            else:
+                s += len(d_attr_names[name])
+        return s
 
 
 class Network:
@@ -257,6 +265,24 @@ class Network:
     def num_ecs(self):
         return max([n.i_ecs for n in self.neurons])+1
 
+    def set_attr_values(self, vector_attr, l_attr_names):
+        '''l_attr_names is a list of dicts like
+        [ {"d": [0], "w_inputs":[0,1,2,3], "v_01":true }, {"d": [1], "w_inputs":[0,1,2,3]}],
+
+        vector_attr is a list
+        '''
+        #n_neurons = network.num_neurons()
+        #assert vector_attr.size % n_neurons == 0
+        #matr_attr = vector_attr.reshape(n_neurons, vector_attr.size // n_neurons)
+        i_start = 0
+        for i_n, n in enumerate(self.neurons):
+            i_end = i_start + n.attr_size(l_attr_names[i_n])
+            n.from_list(vector_attr[i_start:i_end], l_attr_names[i_n])
+            i_start = i_end
+    
+    def total_attr_size(self, l_attr_names):
+        return sum( [ n.attr_size(l_attr_names[i]) for i,n in enumerate(self.neurons) ])
+
 def load_network(file_name):
     """
     Loads parameters of the system from a csv file. File must be located in a root directory
@@ -308,7 +334,10 @@ if __name__ == "__main__":
     net, n_iter = load_network(file)
     inputs = np.array([0, 0, 0, 0])
     #inputs = np.zeros(4)
-    net.neurons[0].from_list([0.75, 1.5, 6], attr_names={'u_th':True, 'd':[0, 2]})
+    l_attr_names = [{'u_th':True, 'd':[1, 3]}, {'v_01':True, 'w':[0]}, {}, {}]
+    net.neurons[0].from_list([0.75, 1.5, 6], d_attr_names={'u_th':True, 'd':[0, 2]})
+    net.set_attr_values([0.55, 10, 15, 3.2, -4], l_attr_names)
+    assert net.total_attr_size(l_attr_names) == 5
     injection = np.array([0, 0])
     print(net.neurons[0].u_th)
     print(net.neurons[0].w)
