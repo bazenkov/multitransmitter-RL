@@ -15,26 +15,41 @@ def strict_slicing(seq, i_start, i_end):
         raise ValueError("Index out of bounds")
     else:
         return seq[i_start:i_end]
-        
+
+def _plain_arr(obj):
+    if isinstance(obj, np.ndarray):
+        return list(obj.reshape(1, obj.size))
+    else:
+        return obj
+
 class InputNeuron(nrn.Neuron):
 
-    fields = ["name" , "u_th", "u_max", "u_0", "u_min", "u_reb", "v_00", "v_01", "v_10", "v_11", "v_reb", "u", "d", "w", "w_inputs"]
+    fields = ["name" , "u_th", "u_max", "u_0", "u_min", "u_reb", "v_00", "v_01", "v_10", "v_11", "v_reb", "u", "d", "w", "w_inputs", "i_ecs"] 
 
-    def __init__(self, name, u_th, u_max, u_0, u_min, u_reb, v_00, v_01, v_10, v_11, v_reb, u, d, w, w_inputs):
+    def _shape_d(self):
+        raise NotImplementedError()
+        n_tr = len(self.w)
+        n_ecs = len(self.d) // n_tr
+        self.d = np.array(self.d).reshape(n_ecs, n_tr)
+
+    def __init__(self, name, u_th, u_max, u_0, u_min, u_reb, v_00, v_01, v_10, v_11, v_reb, u, d, w, w_inputs, i_ecs = 0):
         """Creates a neuron with external imputs. 
         input - a list [weight_1, weight_2]
         """
         nrn.Neuron.__init__(self, name, u_th, u_max, u_0, u_min, u_reb, v_00, v_01, v_10, v_11, v_reb, u, d, w)
         self.w_inputs = w_inputs
+        self.i_ecs = i_ecs
+        #self._shape_d()
+        
 
     def u_rate(self, ecs, time, potentials, inputs):
         """
-        ecs - list of ECS objects
+        ecs - the ECS object
         time - list of tacts time points. time[-1] - the time when this tact started
         potentials - list of membrane potentials of the neuron for each tact
         inputs - numpy array of inputs at the current tact
         """
-        impact = np.sum(np.array(self.w) * ecs[0].cons)
+        impact = np.sum(np.array(self.w) * ecs.cons)
         if inputs.size:
             impact += np.sum(np.array(self.w_inputs) * inputs)
         u_rate_reb = 0
@@ -78,9 +93,12 @@ class InputNeuron(nrn.Neuron):
         return impact + self.u_rate_end + u_rate_reb
     
     def to_list(self):
-        return [self.__dict__[k] for k in self.fields]
+        return [_plain_arr(self.__dict__[k]) for k in self.fields]
 
-    def from_list(self, attr_values, attr_names):
+    def from_list_old(self, attr_values, attr_names):
+        '''attr_names = ["w_inputs", "v_01"]
+        attr_values = [0.5, 2, -1, 4, 2.35]
+        '''
         i_attr = 0
         for attr in attr_names:
             if np.isscalar(self.__dict__[attr]):
@@ -90,7 +108,26 @@ class InputNeuron(nrn.Neuron):
                 len_attr = len(self.__dict__[attr])
                 self.__dict__[attr] = list(strict_slicing(attr_values, i_attr, i_attr + len_attr) )
             i_attr += len_attr
-            
+
+    def from_list(self, attr_values, attr_names):
+        '''attr_names = ["w_inputs":[0, 2], "v_01":True]
+        attr_values = [0.5, -1, 2.35]
+        '''
+        i_attr = 0
+        for attr in attr_names:
+            if np.isscalar(self.__dict__[attr]):
+                len_attr = 1
+                self.__dict__[attr] = attr_values[i_attr]
+            else:
+                len_attr = len(attr_names[attr])
+                for i, ind in enumerate(attr_names[attr]):
+                    self.__dict__[attr][ind] = attr_values[ i_attr + i]
+            i_attr += len_attr
+
+
+
+
+
 
 class Network:
 
@@ -100,17 +137,40 @@ class Network:
 
     def __init__(self, neurons):
         self.neurons = neurons
-        self.ecs = ECS()
+        self.ecs = [ECS() for _ in range(self.num_ecs())]
         self.reset()
     
+    def _update_ecs_single(self, injection = None):
+        self.ecs[0].calc_con(self.neurons, self.activations, injection)
+
+    def _get_d(self, i_neuron, i_ecs):
+        i_start = i_ecs*self.num_transmitters()
+        i_end = i_start + self.num_transmitters()
+        return np.array(self.neurons[i_neuron].d[i_start:i_end])
+
+    def _update_ecs_many(self, injection = None):
+        for i_e, e in enumerate(self.ecs):
+            e.cons = np.zeros(self.num_transmitters())
+            for i_n, _ in enumerate(self.neurons):
+                np.add(e.cons, self._get_d(i_n, i_e) * self.activations[:, -1][i_n], out = e.cons)
+            if not (injection is None):
+                e.cons = np.add(e.cons, injection[i_e, :])
+
+    def _update_ecs(self, injection = None):
+        if self.num_ecs() == 1:
+            self._update_ecs_single(injection)
+        else:
+            self._update_ecs_many(injection)
+            
+
     def reset(self):
         """Initialize network before simulation
         """
         self.time = np.array([0, 0])
         self.potentials = np.array([[n.u] * 2 for n in self.neurons])
         self.activations = np.array([[int(n.u >= n.u_th)] * 2 for n in self.neurons])
-        self.ecs.calc_con(self.neurons, self.activations)
-        self.u_rates = np.array([[n.u_rate([self.ecs], self.time, self.potentials[i], inputs = np.array([]))] * 2 for i, n in enumerate(self.neurons)])
+        self._update_ecs()
+        self.u_rates = np.array([[n.u_rate(self.ecs[n.i_ecs], self.time, self.potentials[i], inputs = np.array([]))] * 2 for i, n in enumerate(self.neurons)])
         self.tact_dur = np.array([0])
 
     def step_old(self, inputs, step_duration):
@@ -154,9 +214,9 @@ class Network:
         """
         total_duration = 0.0
         while total_duration < step_duration*(1 - TIME_EPS_FRAC):
-            self.ecs.calc_con(self.neurons, self.activations, injection)
+            self._update_ecs()
             # calculate MP changing rates due to ecs transmitter concentrations
-            new_u_rates = np.array([[n.u_rate([self.ecs], self.time, self.potentials[i], inputs)] 
+            new_u_rates = np.array([[n.u_rate(self.ecs[n.i_ecs], self.time, self.potentials[i], inputs)] 
                                 for i, n in enumerate(self.neurons)])
             self.u_rates = np.concatenate((self.u_rates, new_u_rates), axis=1)
             # calculate tact duration
@@ -178,7 +238,7 @@ class Network:
 
     def plot(self):
         #c_neurons, c_ecs, c_time, c_potentials, c_activations, u_rates, tact_dur, rhythm
-        params = [self.neurons, [self.ecs], self.time, self.potentials, self.activations, self.u_rates, self.tact_dur, []]
+        params = [self.neurons, self.ecs, self.time, self.potentials, self.activations, self.u_rates, self.tact_dur, []]
         fig = show_plot(params)
         #plt.gca()
         
@@ -191,6 +251,12 @@ class Network:
     def num_neurons(self):
         return len(self.neurons)
 
+    def num_transmitters(self):
+        return len(self.neurons[0].w)
+    
+    def num_ecs(self):
+        return max([n.i_ecs for n in self.neurons])+1
+
 def load_network(file_name):
     """
     Loads parameters of the system from a csv file. File must be located in a root directory
@@ -198,13 +264,14 @@ def load_network(file_name):
     :param file_name: Name of the file with parameters
     :return: Network object, number of iterations
     """
+
     l_neurons = []
     with open(file_name, 'r', newline='') as csvfile:
         reader = csv.reader(csvfile, delimiter=';', quotechar='|')
         data = np.array(list(reader))
         l_iterations = int(data[0][1])
         for line in data[2:]:
-            #['name', 'u_th', 'u_max', 'u_0', 'u_min', 'u_reb', 'v_00', 'v_01', 'v_10', 'v_11', 'v_reb', 'u', 'd', 'w', 'w_inputs']
+            #['name', 'u_th', 'u_max', 'u_0', 'u_min', 'u_reb', 'v_00', 'v_01', 'v_10', 'v_11', 'v_reb', 'u', 'd', 'w', 'w_inputs', 'i_ecs']
             values = [line[0]] + [eval(i) for i in line[1:]]
             l_neurons.append(InputNeuron(*values))
     return Network(l_neurons), l_iterations
@@ -239,13 +306,13 @@ def save_network(network, file_name=None):
 if __name__ == "__main__":
     file = sys.argv[1]#"saved_params/ton_inp.csv"
     net, n_iter = load_network(file)
-    #inputs = np.array([1, 0, 3.5, -2])
-    inputs = np.zeros(4)
-    net.neurons[0].from_list([0.75, 2, -2], attr_names=['u_th', 'w'])
+    inputs = np.array([0, 0, 0, 0])
+    #inputs = np.zeros(4)
+    net.neurons[0].from_list([0.75, 1.5, 6], attr_names={'u_th':True, 'd':[0, 2]})
     injection = np.array([0, 0])
     print(net.neurons[0].u_th)
     print(net.neurons[0].w)
-    step_duration = 0.02
+    step_duration = 1
     for i in range(n_iter):
         net.step(inputs, step_duration, injection)
     net.plot()

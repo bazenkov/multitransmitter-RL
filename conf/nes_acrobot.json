@@ -1,0 +1,13 @@
+{"env":"Acrobot-v1",
+    "network":"saved_params/ton_inp_isolated.csv",
+    "attr_names":["w_inputs"],
+    "algorithm":"nes",
+    "params": {"n_iter": 50, 
+           "pop_size": 100,
+           "n_episode": 1,
+           "episode_duration": 300,
+           "sigma": 50,
+           "alpha": 10    
+       }
+   }
+   

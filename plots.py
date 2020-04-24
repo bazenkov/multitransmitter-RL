@@ -59,3 +59,4 @@ def population_plot(p_params):
             ax.spines['bottom'].set_color('none')
             ax.spines['left'].set_color('none')
             plt.xlim(0, max(p_params[2]))
+

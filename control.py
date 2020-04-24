@@ -1,5 +1,6 @@
 import sys
 import os
+import os.path as path
 from datetime import datetime
 import gym
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
@@ -25,6 +26,17 @@ RNG = np.random.default_rng()
 
 Bound = namedtuple('Bound', ('low', 'up'))
 
+
+def init_env(env_name):
+    if env_name == 'CartPole-v1':
+        return CartPole(version=1)
+    elif env_name == 'CartPole-v0':
+        return CartPole(version=0)
+    elif env_name == 'Acrobot-v1':
+        return Acrobot()
+    else:
+        raise NotImplementedError("Unknown environment name")
+
 class EnvWrap:
     bounds = None
 
@@ -38,6 +50,12 @@ class EnvWrap:
 
     def get_action(self, activation):
         raise NotImplementedError()
+
+    def step(self, activation):
+        inputs, reward, done, x = self.env.step(self.get_action(activation))
+        #if np.all(activation):
+        #    reward = reward - 0.5
+        return inputs, reward, done, x
 
     def norm(self, observation):
         raise NotImplementedError()
@@ -71,8 +89,8 @@ class CartPole(EnvWrap):
     LEFT = 0
     RIGHT = 1
         
-    def __init__(self):
-        EnvWrap.__init__(self, 'CartPole-v1')
+    def __init__(self, version = 1):
+        EnvWrap.__init__(self, f'CartPole-v{version}')
         self.bounds = [Bound(-4.8, 4.8), Bound(-10, 10), Bound(-24, 24), Bound(-10, 10)]
     
     def get_action(self, activation):
@@ -82,25 +100,18 @@ class CartPole(EnvWrap):
             return self.RIGHT
         return random.randrange(2)
 
-    def set_inputs(self, network, all_inputs):
-        n_neurons = network.num_neurons()
-        assert self.n_inputs == all_inputs.size // n_neurons
-        for i_n, n in enumerate(network.neurons):
-            n.w_inputs = list(all_inputs.reshape(n_neurons, self.n_inputs)[i_n,:])
+    #def set_inputs(self, network, all_inputs):
+    #    n_neurons = network.num_neurons()
+    #    assert self.n_inputs == all_inputs.size // n_neurons
+    #    for i_n, n in enumerate(network.neurons):
+    #        n.w_inputs = list(all_inputs.reshape(n_neurons, self.n_inputs)[i_n,:])
 
     def num_weights(self, network):
         return self.n_inputs*network.num_neurons()
 
     def time_step(self):
         return self.env.tau
-
-    def step(self, activation):
-        inputs, reward, done, x = self.env.step(self.get_action(activation))
-        #if np.all(activation):
-        #    reward = reward - 0.5
-        return inputs, reward, done, x
     
-
 class Acrobot(EnvWrap):
     LEFT_NEURON = 0
     RIGHT_NERON = 1
@@ -123,15 +134,50 @@ class Acrobot(EnvWrap):
     def time_step(self):
         return self.env.dt
 
-def create_env(name):
-    if name == "Acrobot":
-        return Acrobot()
-    elif name == "Cartpole":
-        return CartPole()
-    raise NotImplementedError()
+class MountainCar(EnvWrap):
+    
+    def __init__(self):
+        EnvWrap.__init__(self, "MountainCar-v0")
+    
+
+SCALE = 50
+ALPHA = 0.01
+
+def fun(w, params):
+    set_attr_values(params[1], w, params[2])
+    #params = [env, network, attr_names, n_episode, episode_duration]
+    return control(params[0], params[1], params[3], params[4])
+
+def fun_reg(w, params):
+    set_attr_values(params[1], w, params[2])
+    #params = [env, network, attr_names, n_episode, episode_duration, gamma]
+    R = control(params[0], params[1], params[3], params[4])
+    return R - params[5]*np.sum(np.abs(w))
 
 
-def set_inputs(network, vector_attr, attr_names):
+#def train(env_w, network, attr_names, n_iter, pop_size, n_episode, episode_duration, sigma, alpha, gamma = 0):
+#    w, pop, R_history, best_history = nes(fun,  np.random.randn(env_w.num_weights(network)), n_iter, pop_size, sigma, alpha, gamma,
+#             [env_w, network, attr_names, n_episode, episode_duration])
+#    return w, pop, R_history, best_history
+
+def attr_size(neuron, attr_names):
+    '''attr_names is a list like:
+    [ {"d": [0], "w_inputs":[0,2], "v_01":true }, {"d": [1], "w_inputs":[1,2,3]}],
+    '''
+    s = 0
+    for name in attr_names:
+        if np.isscalar(neuron.__dict__[name]):
+            s += 1
+        else:
+            s += len(attr_names[name])
+    return s
+
+def init_inputs(network, env_w):
+    for n in network.neurons:
+        n.w_inputs = np.zeros(env_w.n_inputs)
+    return network
+
+def set_attr_values(network, vector_attr, attr_names):
     n_neurons = network.num_neurons()
     assert vector_attr.size == vector_attr.shape[0]
     assert vector_attr.size % n_neurons == 0
@@ -139,51 +185,20 @@ def set_inputs(network, vector_attr, attr_names):
     for i_n, n in enumerate(network.neurons):
         n.from_list(list(matr_attr[i_n,:]), attr_names)
 
-
-SCALE = 50
-ALPHA = 0.01
-
-def fun(w, params):
-    set_inputs(params[1], w, params[2])
-    #params = [env, network, attr_names, n_episode, episode_duration]
-    return control(params[0], params[1], params[3], params[4])
-
-def fun_reg(w, params):
-    set_inputs(params[1], w, params[2])
-    #params = [env, network, attr_names, n_episode, episode_duration, gamma]
-    R = control(params[0], params[1], params[3], params[4])
-    return R - params[5]*np.sum(np.abs(w))
-
-
-def train(env_w, network, attr_names, n_iter, pop_size, n_episode, episode_duration, sigma, alpha, gamma = 0):
-    w, pop, R_history, best_history = nes(fun,  np.random.randn(env_w.num_weights(network)), n_iter, pop_size, sigma, alpha, gamma,
-             [env_w, network, attr_names, n_episode, episode_duration])
-    return w, pop, R_history, best_history
-
-def attr_size(neuron, attr_names):
-    s = 0
-    for name in attr_names:
-        if np.isscalar(neuron.__dict__[name]):
-            s += 1
-        else:
-            s += len(neuron.__dict__[name])
-    return s
-
-
 def random_search(env_w, network, attr_names, n_sample, sigma = 1, n_episode = 2, episode_duration=100):
     param_size = attr_size(network.neurons[0], attr_names)*network.num_neurons()
     reward = np.zeros(n_sample)
     policies = []
     for i_p in range(n_sample):
         w = RNG.normal(scale = sigma, size=param_size)
-        set_inputs(network, w, attr_names)
+        set_attr_values(network, w, attr_names)
         policies.append(w)
         reward[i_p] = control(env_w, network, n_episode, episode_duration)
     print("Best policy is:")
     best_ind = np.argmax(reward)
     print(policies[best_ind])
     print("Best reward is: " + str(reward[best_ind]))
-    set_inputs(network, policies[best_ind], attr_names) 
+    set_attr_values(network, policies[best_ind], attr_names) 
     return network, policies, reward
 
 def control(env_w, network, n_episode=1, episode_duration=100, show = False, recorder = None):
@@ -225,44 +240,31 @@ def test_random_search(file, attr_names):
     file_name = folder + "/" + f"random_{n_sample}_" + datetime.strftime(datetime.now(), "%H.%M.%S - %Y.%m.%d") + ".csv"
     net.save_network(network, file_name)
 
-def init_env(env_name):
-    if env_name == 'CartPole-v1':
-        return CartPole()
-    elif env_name == 'Acrobot-v1':
-        return Acrobot()
-    else:
-        raise NotImplementedError("Unknown environment name")
-
-def init_inputs(network, env_w):
-    for n in network.neurons:
-        n.w_inputs = np.zeros(env_w.n_inputs)
-    return network
-
-def test_nes(env_name, file, attr_names, alg_params):
-    network, n_iter = net.load_network(file)
-    #start control cycle
+def train_nes(env_name, file, attr_names, alg_params, show_history = False):
+    network, _ = net.load_network(file)
     env_w = init_env(env_name)
     network = init_inputs(network, env_w)
     print(f"Starting {env_w.name} environment")
-    print(env_w.env.action_space)
-    print(env_w.env.observation_space)
-    best_w, pop, R_history, best_history = train(env_w, network, attr_names,  
-        n_iter = alg_params['n_iter'], 
-        pop_size = alg_params['pop_size'], 
-        n_episode = alg_params['n_episode'], 
-        episode_duration = alg_params['episode_duration'], 
-        sigma = alg_params['sigma'], 
-        alpha = alg_params['alpha'])
-    print("Show the best policy")
-    env_w.set_inputs(network, best_w)
-    #control(env, network, n_episode = 1, episode_duration = 100, show = True)
-    #network.plot()
+    #print(network.neurons[1].__dict__.keys())
+    w_0 = np.random.randn(network.num_neurons()*attr_size(network.neurons[0], attr_names))
+    print("Starting NES optimization with parameters:")
+    for n in alg_params.keys():
+        print(f"{n}={alg_params[n]}")
+    fun_params = [env_w, network, attr_names, alg_params['n_episode'], alg_params['episode_duration']]
+    best_w, pop, R_history, best_history = nes(fun, w_0, 
+            n_iter = alg_params['n_iter'], 
+            pop_size = alg_params['pop_size'], 
+            sigma = alg_params['sigma'], 
+            alpha = alg_params['alpha'], 
+            params =  fun_params)
+    set_attr_values(network, best_w, attr_names)
     env_w.env.close()
-    plt.plot(R_history)
-    plt.show()
-    folder = f"trained/{env_w.name}"
-    file_name = folder + "/" + f"nes_" + datetime.strftime(datetime.now(), "%H.%M.%S - %Y.%m.%d") + ".csv"
-    net.save_network(network, file_name)
+    print("Optimization finished")
+    if show_history:
+        plt.plot(R_history)
+        plt.show()
+    results = {'network':network, 'reward_history':R_history, 'population':pop, 'best_history':best_history}
+    return network, results
 
 def train_ga(file, attr_names):
     network, _ = net.load_network(file)
@@ -282,7 +284,7 @@ def train_ga(file, attr_names):
             n_iter = 50, pop_size = 50, elite_frac = 0.1, sigma = 50,
             params = [env_w, network, attr_names, n_episode, episode_duration, gamma])
     print("Show the best policy")
-    set_inputs(network, best_w, attr_names)
+    set_attr_values(network, best_w, attr_names)
     env_w.env.close()
     
     folder = "trained/" + env_w.name
@@ -295,11 +297,9 @@ def train_ga(file, attr_names):
     plt.show()
     return file_name
 
-def show_network(file, record = False, video_path = None):
+def show_network(file, env_name, record = False, video_path = None):
     network, n_iter = net.load_network(file)
-    #start control cycle
-    env_w = CartPole()
-    #env_w = Acrobot()
+    env_w = init_env(env_name)
     print(f"Starting {env_w.name} environment")
     print(env_w.env.action_space)
     print(env_w.env.observation_space)
@@ -328,6 +328,26 @@ def test_video():
     f = open(rec.path)
     assert os.fstat(f.fileno()).st_size > 100
 
+def check_folder(folder):
+    if not path.exists(folder):
+        os.mkdir(folder)
+
+def experiment_name(alg_name):
+    return alg_name + datetime.strftime(datetime.now(), "%H.%M.%S - %Y.%m.%d")
+
+def save_results(env_name, alg_name, network, results):
+    folder = f"trained/{env_name}"
+    check_folder(folder)
+    file_network = folder + "/" + experiment_name(alg_name) + ".csv"
+    net.save_network(network, file_network)
+    file_json = folder + "/" + experiment_name(alg_name) + ".json"
+    results['network'] = file_network
+    results['reward_history'] = list(results['reward_history'])
+    results['best_history'] = [list(x) for x in results['best_history'] ]
+    results['population'] = [list(results['population'][i,:]) for i in range(results['population'].shape[0])]
+    json.dump(results, open(file_json, 'w'))
+    return file_network, file_json
+
 if __name__ == "__main__":
     option = sys.argv[1]
     if len(sys.argv)>2:
@@ -337,20 +357,26 @@ if __name__ == "__main__":
         network_file = json_params['network']
         attr_names = json_params['attr_names']
         if json_params['algorithm'] == 'nes':
-            test_nes(json_params['env'], network_file, attr_names, json_params['params'])    
+            network, results = train_nes(json_params['env'], network_file, attr_names, json_params['params'])
         elif json_params['algorithm'] == 'rand':
-            test_random_search(network_file, attr_names)
+            raise NotImplementedError("Random search requires refactoring")
+            #test_random_search(network_file, attr_names)
         elif json_params['algorithm'] == 'ga':
-            file_name = train_ga(network_file, attr_names)
-            show_network(file_name)
+            raise NotImplementedError("GA requires refactoring")
+            #file_name, results = train_ga(network_file, attr_names)
+        file_network, file_json = save_results(json_params['env'], json_params['algorithm'], network, results)
+    #show_network(file_name)
     elif option == 'show':
-        if len(sys.argv) > 3:
-            video_file = sys.argv[3]            
-            show_network(file, record = True, video_path = video_file)
+        env_name = sys.argv[3]
+        if len(sys.argv) > 4:
+            video_file = sys.argv[4]            
+            show_network(file, env_name, record = True, video_path = video_file)
         else:
-            show_network(file)
+            show_network(file, env_name)
     elif option == 'test':
         test_video()
+    else:
+        raise ValueError(f"Unknown option: {option}")
 
     
     

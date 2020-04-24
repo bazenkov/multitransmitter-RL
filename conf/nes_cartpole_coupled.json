@@ -1,11 +1,11 @@
 {"env":"CartPole-v1",
  "network":"saved_params/ton_inp_isolated.csv",
- "attr_names":["w_inputs"],
+ "attr_names":["w_inputs", "d", "v_01"],
  "algorithm":"nes",
  "params": {"n_iter": 50, 
-        "pop_size": 50,
-        "n_episode": 1,
-        "episode_duration": 200,
+        "pop_size": 100,
+        "n_episode": 2,
+        "episode_duration": 150,
         "sigma": 50,
         "alpha": 10    
     }

@@ -4,7 +4,7 @@ from numpy.linalg import norm
 import matplotlib.pyplot as plt
 
 
-def nes(fun, w_0, n_iter, pop_size = 50, sigma = 1, alpha = 0.01, gamma = 0, params = []):
+def nes(fun, w_0, n_iter, pop_size = 50, sigma = 1, alpha = 0.01, params = []):
     def f(x):
         if params:
             return fun(x, params)
@@ -21,13 +21,14 @@ def nes(fun, w_0, n_iter, pop_size = 50, sigma = 1, alpha = 0.01, gamma = 0, par
         for j_p in range(pop_size):
             w_try = w + sigma*noise[j_p]
             pop[j_p] = w_try
-            R[j_p] = f(w_try) - gamma*np.sum(np.abs(w_try))
+            R[j_p] = f(w_try)
         #A = (R - np.mean(R)) / np.std(R)
         A = R
         w = w + alpha/(pop_size*sigma) * np.dot(noise.T, A)
         R_history[i] = f(w)
-        best_ind = np.argmax(R)
-        best_history.append(pop[best_ind])
+        #best_ind = np.argmax(R)
+        best_history.append(np.array(w))
+        
     return w, pop, R_history, best_history
 
 def call_f(fun, x, params = None):
