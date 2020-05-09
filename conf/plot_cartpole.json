@@ -1,0 +1,7 @@
+{"files":[ "trained/CartPole-v1/cartpole_isolated.json", 
+    "trained/CartPole-v1/cartpole_asym.json",  "trained/CartPole-v1/cartpole_full.json"],
+    "print_file":"fig/cartpole.png",
+    "title":"CartPole",
+    "labels":["isolated", "asymmetric", "full"],
+    "figsize":[4,3]
+}

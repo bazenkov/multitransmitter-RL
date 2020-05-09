@@ -12,20 +12,29 @@ from algorithms import nes
 from algorithms import simple_ga
 import matplotlib.pyplot as plt
 from collections import namedtuple
+import plots
 
 
 """Command-line options
 python contro.py [show|train|test] [network_filename|config_filename]
 
-python control.py show network_file_name
-python control.py train config_filename
+python control.py show network_file_name environment_name
+python control.py train config_filename 
 python control.py test
+
+conda activate neuro
+python control.py train "conf/test.json"
+python control.py show "trained/CartPole-v1/nes04.09.10 - 2020.04.28.csv" CartPole-v1
+
 """
+#TODO
+#Save results after each iteration
+#Parallel processing
+#Continuous control
 
 RNG = np.random.default_rng()
 
 Bound = namedtuple('Bound', ('low', 'up'))
-
 
 def init_env(env_name):
     if env_name == 'CartPole-v1':
@@ -34,6 +43,10 @@ def init_env(env_name):
         return CartPole(version=0)
     elif env_name == 'Acrobot-v1':
         return Acrobot()
+    elif env_name == 'BipedalWalker-v2':
+        return BipedalWalker()
+    elif env_name == 'Pendulum-v0':
+        return Pendulum()
     else:
         raise NotImplementedError("Unknown environment name")
 
@@ -56,6 +69,9 @@ class EnvWrap:
         #if np.all(activation):
         #    reward = reward - 0.5
         return inputs, reward, done, x
+
+    def reset(self):
+        return self.env.reset()
 
     def norm(self, observation):
         raise NotImplementedError()
@@ -112,6 +128,8 @@ class CartPole(EnvWrap):
     def time_step(self):
         return self.env.tau
     
+    
+    
 class Acrobot(EnvWrap):
     LEFT_NEURON = 0
     RIGHT_NERON = 1
@@ -138,7 +156,104 @@ class MountainCar(EnvWrap):
     
     def __init__(self):
         EnvWrap.__init__(self, "MountainCar-v0")
+
+class BipedalWalker(EnvWrap):
+    #State:
+
+    #a[0] = hip_todo[0]
+    #a[1] = knee_todo[0]
+    #a[2] = hip_todo[1]
+    #a[3] = knee_todo[1]
+    #a = np.clip(0.5*a, -1.0, 1.0)
+    #state = [
+    #0.  self.hull.angle,        # Normal angles up to 0.5 here, but sure more is possible.
+    #1.  2.0*self.hull.angularVelocity/FPS,
+    #2.  0.3*vel.x*(VIEWPORT_W/SCALE)/FPS,  # Normalized to get -1..1 range
+    #3.  0.3*vel.y*(VIEWPORT_H/SCALE)/FPS,
+    #4.  self.joints[0].angle,   # This will give 1.1 on high up, but it's still OK (and there should be spikes on hiting the ground, that's normal too)
+    #5.  self.joints[0].speed / SPEED_HIP,
+    #6.  self.joints[1].angle + 1.0,
+    #7.  self.joints[1].speed / SPEED_KNEE,
+    #8.  1.0 if self.legs[1].ground_contact else 0.0,
+    #9.  self.joints[2].angle,
+    #10. self.joints[2].speed / SPEED_HIP,
+    #11. self.joints[3].angle + 1.0,
+    #12. self.joints[3].speed / SPEED_KNEE,
+    #13. 1.0 if self.legs[3].ground_contact else 0.0
+    #]
+
+    LEFT_HIP_UP = 2
+    LEFT_HIP_DOWN = 3
+    LEFT_KNEE_UP = 4
+    LEFT_KNEE_DOWN = 5
+    RIGHT_HIP_UP = 6
+    RIGHT_HIP_DOWN = 7
+    RIGHT_KNEE_UP = 8
+    RIGHT_KNEE_DOWN = 9
+
+    ACT_LEFT_HIP = 0
+    ACT_LEFT_KNEE = 1
+    ACT_RIGHT_HIP = 2
+    ACT_RIGHT_KNEE = 3
+
+    N_PHYS_STATE = 14
+
+    FPS = 50.0
+
+    def action_couple(self, act_up, act_down):
+        if act_up > 0 and act_down == 0:
+            return act_up
+        elif act_up == 0 and act_down > 0:
+            return -act_down
+        else:
+            return 0
     
+    def __init__(self):
+        EnvWrap.__init__(self, 'BipedalWalker-v2')
+    
+    def get_action(self, activation):
+        '''
+        activation is a list or ndarray with elements in the range [0, 1]
+        action = [hip_left, knee_left, hip_right, knee_right]
+        '''
+        action = [0, 0, 0, 0]
+        action[ self.ACT_LEFT_HIP ]= self.action_couple(activation[self.LEFT_HIP_UP], activation[self.LEFT_HIP_DOWN])
+        action[ self.ACT_LEFT_KNEE ]= self.action_couple(activation[self.LEFT_KNEE_UP], activation[self.LEFT_KNEE_DOWN])
+        action[ self.ACT_RIGHT_HIP ]= self.action_couple(activation[self.RIGHT_HIP_UP], activation[self.RIGHT_HIP_DOWN])
+        action[ self.ACT_RIGHT_KNEE ]= self.action_couple(activation[self.RIGHT_KNEE_UP], activation[self.RIGHT_KNEE_DOWN])
+        return action
+    
+    def step(self, activation):
+        state, reward, done, x = self.env.step(self.get_action(activation))
+        return state[0:self.N_PHYS_STATE], reward, done, x
+    
+    def time_step(self):
+        return 1.0/self.FPS
+
+    def reset(self):
+        state = self.env.reset() 
+        return state[0:self.N_PHYS_STATE]
+
+class Pendulum(EnvWrap):
+    LEFT_NEURON = 0
+    RIGHT_NEURON = 1
+
+    def __init__(self):
+        EnvWrap.__init__(self, "Pendulum-v0")
+        self.n_inputs = 3
+    
+    def get_action(self, activation):
+        '''activation is a vector of relative activations (u-u_th)/(u_max - u_th)
+        '''
+        if activation[self.LEFT_NEURON] > 0 and activation[self.RIGHT_NEURON]<=0:
+            return [-activation[self.LEFT_NEURON]*self.env.max_torque]
+        elif activation[self.LEFT_NEURON] <= 0 and activation[self.RIGHT_NEURON]>0:
+            return [activation[self.RIGHT_NEURON]*self.env.max_torque]
+        else:
+            return [0]
+
+    def time_step(self):
+        return self.env.dt
 
 SCALE = 50
 ALPHA = 0.01
@@ -164,7 +279,7 @@ def fun_reg(w, params):
 
 def init_inputs(network, env_w):
     for n in network.neurons:
-        n.w_inputs = np.zeros(env_w.n_inputs)
+        n.w_inputs = [0]*env_w.n_inputs
     return network
 
 def random_search(env_w, network, attr_names, n_sample, sigma = 1, n_episode = 2, episode_duration=100):
@@ -186,7 +301,7 @@ def random_search(env_w, network, attr_names, n_sample, sigma = 1, n_episode = 2
 def control(env_w, network, n_episode=1, episode_duration=100, show = False, recorder = None):
     cum_reward = 0.0
     for _ in range(n_episode):
-        inputs = env_w.env.reset()
+        inputs = env_w.reset()
         network.reset()
         for _ in range(episode_duration):
             if show:
@@ -197,6 +312,7 @@ def control(env_w, network, n_episode=1, episode_duration=100, show = False, rec
             activation = network.step(inputs, step_duration =  env_w.time_step())
             #inputs, reward, done, _ =  env_w.env.step( env_w.get_action(activation))
             inputs, reward, done, _ =  env_w.step( activation)
+           
             cum_reward += reward
             if done:
                 break
@@ -291,7 +407,7 @@ def show_network(file, env_name, record = False, video_path = None):
         R = control(env_w, network, n_episode = 1, episode_duration = 200, show = True, recorder = vr)
         vr.close()
     else:
-        R = control(env_w, network, n_episode = 1, episode_duration = 500, show = True)
+        R = control(env_w, network, n_episode = 1, episode_duration = 100, show = True)
     env_w.env.close()
     network.plot()
     plt.show()
@@ -323,11 +439,16 @@ def save_results(env_name, alg_name, network, results):
     file_network = folder + "/" + experiment_name(alg_name) + ".csv"
     net.save_network(network, file_network)
     file_json = folder + "/" + experiment_name(alg_name) + ".json"
+    
+    
     results['network'] = file_network
     results['reward_history'] = list(results['reward_history'])
     results['best_history'] = [list(x) for x in results['best_history'] ]
     results['population'] = [list(results['population'][i,:]) for i in range(results['population'].shape[0])]
     json.dump(results, open(file_json, 'w'))
+    file_print = "fig/" + experiment_name(alg_name) + ".png"
+    plots.plot_history(results['reward_history'])
+    plt.savefig(file_print, format='png')
     return file_network, file_json
 
 if __name__ == "__main__":

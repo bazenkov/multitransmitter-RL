@@ -23,6 +23,8 @@ def _plain_arr(obj):
         return obj
 
 class InputNeuron(nrn.Neuron):
+    '''Every attribute is stored as python scalar or lists, not NumPy arrays
+    '''
 
     fields = ["name" , "u_th", "u_max", "u_0", "u_min", "u_reb", "v_00", "v_01", "v_10", "v_11", "v_reb", "u", "d", "w", "w_inputs", "i_ecs"] 
 
@@ -92,6 +94,11 @@ class InputNeuron(nrn.Neuron):
 
         return impact + self.u_rate_end + u_rate_reb
     
+    def relative_act(self):
+        #if neuron.u >= neuron.u_th:
+        du = (self.u - self.u_th) / (self.u_max - self.u_th)
+        return max(du, 0)
+
     def to_list(self):
         return [_plain_arr(self.__dict__[k]) for k in self.fields]
 
@@ -169,7 +176,9 @@ class Network:
             self._update_ecs_single(injection)
         else:
             self._update_ecs_many(injection)
-            
+
+    def relative_activation(self):
+        return [n.relative_activation() for n in self.neurons]
 
     def reset(self):
         """Initialize network before simulation
@@ -278,6 +287,10 @@ class Network:
         for i_n, n in enumerate(self.neurons):
             i_end = i_start + n.attr_size(l_attr_names[i_n])
             n.from_list(vector_attr[i_start:i_end], l_attr_names[i_n])
+            #TODO
+            #A hack for d
+            for i,_ in enumerate(n.d):
+                n.d[i] = abs(n.d[i])
             i_start = i_end
     
     def total_attr_size(self, l_attr_names):

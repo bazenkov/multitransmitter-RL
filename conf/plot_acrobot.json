@@ -1,0 +1,7 @@
+{"files":[ "trained/Acrobot-v1/acrobot_isolated.json", 
+    "trained/Acrobot-v1/acrobot_asym.json"],
+    "print_file":"fig/acrobot.png",
+    "title":"Acrobot",
+    "labels":["isolated", "asymmetric"],
+    "figsize":[4,3]
+}

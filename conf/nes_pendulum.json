@@ -1,11 +1,11 @@
-{"env":"Acrobot-v1",
+{"env":"Pendulum-v0",
     "network":"saved_params/ton_inp_isolated.csv",
-    "attr_names":["w_inputs"],
+    "attr_names":[{"w_inputs":[0,1,2], "w":[0,1]}, {"w_inputs":[0,1,2], "w":[0,1]}],
     "algorithm":"nes",
     "params": {"n_iter": 50, 
-           "pop_size": 100,
+           "pop_size": 50,
            "n_episode": 1,
-           "episode_duration": 300,
+           "episode_duration": 500,
            "sigma": 50,
            "alpha": 10    
        }
